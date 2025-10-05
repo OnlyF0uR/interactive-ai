@@ -7,7 +7,7 @@ const SYSTEM_PROMPT: Lazy<String> = Lazy::new(|| {
 const DEV_PROMPT: Lazy<String> =
     Lazy::new(|| std::env::var("DEV_PROMPT").unwrap_or_else(|_| "".to_string()));
 
-const CONTEXT_K: usize = 200;
+const CONTEXT_K: usize = 35; // Can be 50
 
 pub mod llama;
 pub mod openrouter;

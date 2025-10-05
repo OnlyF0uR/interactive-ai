@@ -30,8 +30,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             break;
         }
 
-        inference::openrouter::infer_and_print(0, &user_prompt).await?;
-        // inference::llama::infer_and_print(0, &user_prompt).await?;
+        // inference::openrouter::infer_and_print(0, &user_prompt).await?;
+        inference::llama::infer_and_print(0, &user_prompt).await?;
     }
 
     Ok(())

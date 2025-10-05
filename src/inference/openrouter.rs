@@ -30,7 +30,7 @@ pub async fn infer_and_print(
     println!("│  {}", prompt);
     println!("└─");
     println!("┌─ \x1b[32;1mAI\x1b[0m");
-    print!("│");
+    print!("│ ");
     std::io::stdout().flush()?;
 
     // Start loading animation
@@ -38,17 +38,11 @@ pub async fn infer_and_print(
     let loading_clone = loading.clone();
 
     let loading_task = tokio::spawn(async move {
-        let dots = ["   ", ".  ", ".. ", "..."];
-        let mut idx = 0;
         while loading_clone.load(Ordering::Relaxed) {
-            print!("\r│ {}", dots[idx]);
+            print!("."); // Print dots sequentially
             std::io::stdout().flush().ok();
-            idx = (idx + 1) % dots.len();
             tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
         }
-        // Clear the dots completely - overwrite with spaces then reset cursor
-        print!("\r│     \r│ ");
-        std::io::stdout().flush().ok();
     });
 
     let convo = Conversation::new(convo_id);
@@ -83,8 +77,6 @@ pub async fn infer_and_print(
                 async move {
                     if first_chunk {
                         loading_ref.store(false, Ordering::Relaxed);
-                        // Wait a tiny bit for loading task to clear
-                        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
                         first_chunk = false;
                     }
                     if let Some(content) = chunk.choices[0].content() {
@@ -92,20 +84,18 @@ pub async fn infer_and_print(
                         for ch in content.chars() {
                             if ch == '\n' {
                                 print!("\n│ ");
-                                std::io::stdout().flush().ok();
-                                last_was_space = false;
+                                last_was_space = false; // Reset space tracking on newline
                             } else if ch == ' ' {
                                 if !last_was_space {
                                     print!("{}", ch);
-                                    std::io::stdout().flush().ok();
-                                    last_was_space = true;
                                 }
+                                last_was_space = true;
                             } else {
                                 print!("{}", ch);
-                                std::io::stdout().flush().ok();
                                 last_was_space = false;
                             }
                         }
+                        std::io::stdout().flush().ok(); // Flush once per chunk
                         acc.push_str(content);
                     }
                     (acc, first_chunk, last_was_space)

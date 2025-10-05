@@ -10,7 +10,10 @@ use crate::inference;
 #[allow(dead_code)]
 pub static LLAMA_INSTANCE: Lazy<(Arc<LlamaBackend>, Arc<LlamaModel>)> = Lazy::new(|| {
     // Initialize backend
-    let backend = Arc::new(LlamaBackend::init().expect("Failed to initialize llama backend"));
+    let mut llama_backend = LlamaBackend::init().expect("Failed to initialize llama backend");
+    llama_backend.void_logs();
+
+    let backend = Arc::new(llama_backend);
 
     // Configure parameters with GPU offloading - ensure all layers go to GPU
     let params = LlamaModelParams::default()

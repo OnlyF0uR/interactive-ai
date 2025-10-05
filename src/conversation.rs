@@ -100,11 +100,15 @@ impl Conversation {
         user_prompt: &str,
         last_k: Option<usize>,
     ) -> Result<String, Box<dyn std::error::Error>> {
+        // Use a clearer chat template format
         let mut prompt = String::new();
 
-        // Add system and developer prompts
-        prompt.push_str(&format!("System: {}\n\n", system_prompt));
-        prompt.push_str(&format!("Developer: {}\n\n", dev_prompt));
+        // Start with system context
+        prompt.push_str("<|im_start|>system\n");
+        prompt.push_str(system_prompt);
+        prompt.push_str("\n\n");
+        prompt.push_str(dev_prompt);
+        prompt.push_str("<|im_end|>\n");
 
         // Load conversation history
         let prefix = format!("message:{}:", self.id);
@@ -140,18 +144,24 @@ impl Conversation {
             &messages[..]
         };
 
-        // Format conversation history
+        // Format conversation history with clear delimiters
         for (_, m) in messages_to_process {
-            let role = if m.author_type == 0 {
-                "User"
+            if m.author_type == 0 {
+                prompt.push_str("<|im_start|>user\n");
+                prompt.push_str(&m.content);
+                prompt.push_str("<|im_end|>\n");
             } else {
-                "Assistant"
-            };
-            prompt.push_str(&format!("{}: {}\n\n", role, m.content));
+                prompt.push_str("<|im_start|>assistant\n");
+                prompt.push_str(&m.content);
+                prompt.push_str("<|im_end|>\n");
+            }
         }
 
         // Add current user prompt
-        prompt.push_str(&format!("User: {}\n\nAssistant:", user_prompt));
+        prompt.push_str("<|im_start|>user\n");
+        prompt.push_str(user_prompt);
+        prompt.push_str("<|im_end|>\n");
+        prompt.push_str("<|im_start|>assistant\n");
 
         Ok(prompt)
     }
