@@ -30,9 +30,11 @@ pub async fn infer_and_print(
     let db = get_rocks_db();
     let (backend, model) = get_llama();
 
-    // Colored output: cyan for user, green for AI
-    println!("\x1b[36mUSER:\x1b[0m {prompt}");
-    print!("\x1b[32mAI:\x1b[0m ");
+    println!("\n┌─ \x1b[36;1mYou\x1b[0m");
+    println!("│  {}", prompt);
+    println!("└─");
+    println!("┌─ \x1b[32;1mAI\x1b[0m");
+    print!("│");
     std::io::stdout().flush()?;
 
     // Start loading animation
@@ -43,12 +45,13 @@ pub async fn infer_and_print(
         let dots = ["   ", ".  ", ".. ", "..."];
         let mut idx = 0;
         while loading_clone.load(Ordering::Relaxed) {
-            print!("\r\x1b[32mAI:\x1b[0m {}", dots[idx]);
+            print!("\r│ {}", dots[idx]);
             std::io::stdout().flush().ok();
             idx = (idx + 1) % dots.len();
             tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
         }
-        print!("\r\x1b[32mAI:\x1b[0m ");
+        // Clear the dots completely - overwrite with spaces then reset cursor
+        print!("\r│     \r│ ");
         std::io::stdout().flush().ok();
     });
 
@@ -100,6 +103,8 @@ pub async fn infer_and_print(
         LlamaSampler::chain_simple([LlamaSampler::dist(1234), LlamaSampler::greedy()]);
 
     let mut assistant_result = String::new();
+    let mut first_token = true;
+    let mut last_was_space = false;
 
     while n_cur <= n_len {
         let token = sampler.sample(&ctx, batch.n_tokens() - 1);
@@ -107,13 +112,15 @@ pub async fn infer_and_print(
 
         // Check for end of generation
         if model.is_eog_token(token) {
-            println!("\x1b[0m"); // Reset color
             break;
         }
 
         // Stop loading animation on first token
-        if n_cur == batch.n_tokens() {
+        if first_token {
             loading.store(false, Ordering::Relaxed);
+            // Wait a tiny bit for loading task to clear
+            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+            first_token = false;
         }
 
         // Decode token to string
@@ -121,8 +128,24 @@ pub async fn infer_and_print(
         let mut output_string = String::with_capacity(32);
         let (_, _, _) = decoder.decode_to_string(&output_bytes, &mut output_string, false);
 
-        print!("\x1b[32m{}\x1b[0m", output_string); // Green color for AI output
-        std::io::stdout().flush()?;
+        // Handle newlines and spaces properly
+        for ch in output_string.chars() {
+            if ch == '\n' {
+                print!("\n│ ");
+                std::io::stdout().flush()?;
+                last_was_space = false;
+            } else if ch == ' ' {
+                if !last_was_space {
+                    print!("{}", ch);
+                    std::io::stdout().flush()?;
+                    last_was_space = true;
+                }
+            } else {
+                print!("{}", ch);
+                std::io::stdout().flush()?;
+                last_was_space = false;
+            }
+        }
 
         assistant_result.push_str(&output_string);
 
@@ -135,7 +158,9 @@ pub async fn infer_and_print(
     }
 
     loading.store(false, Ordering::Relaxed);
-    loading_task.abort();
+    let _ = loading_task.await;
+
+    println!("\n└─");
 
     // Save the conversation
     convo.save_message(

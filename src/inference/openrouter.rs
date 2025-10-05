@@ -26,8 +26,11 @@ pub async fn infer_and_print(
     let db = get_rocks_db();
     let client = get_or_client();
 
-    println!("\x1b[36mUSER:\x1b[0m {prompt}");
-    print!("\x1b[32mAI:\x1b[0m ");
+    println!("\n┌─ \x1b[36;1mYou\x1b[0m");
+    println!("│  {}", prompt);
+    println!("└─");
+    println!("┌─ \x1b[32;1mAI\x1b[0m");
+    print!("│");
     std::io::stdout().flush()?;
 
     // Start loading animation
@@ -38,12 +41,13 @@ pub async fn infer_and_print(
         let dots = ["   ", ".  ", ".. ", "..."];
         let mut idx = 0;
         while loading_clone.load(Ordering::Relaxed) {
-            print!("\r\x1b[32mAI:\x1b[0m {}", dots[idx]);
+            print!("\r│ {}", dots[idx]);
             std::io::stdout().flush().ok();
             idx = (idx + 1) % dots.len();
             tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
         }
-        print!("\r\x1b[32mAI:\x1b[0m ");
+        // Clear the dots completely - overwrite with spaces then reset cursor
+        print!("\r│     \r│ ");
         std::io::stdout().flush().ok();
     });
 
@@ -73,19 +77,38 @@ pub async fn infer_and_print(
     let assistent_result = stream
         .filter_map(|event| async { event.ok() })
         .fold(
-            (String::new(), true),
-            |(mut acc, mut first_chunk), chunk| {
+            (String::new(), true, false),
+            |(mut acc, mut first_chunk, mut last_was_space), chunk| {
                 let loading_ref = loading_clone2.clone();
                 async move {
                     if first_chunk {
                         loading_ref.store(false, Ordering::Relaxed);
+                        // Wait a tiny bit for loading task to clear
+                        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
                         first_chunk = false;
                     }
                     if let Some(content) = chunk.choices[0].content() {
-                        print!("\x1b[32m{}\x1b[0m", content);
+                        // Handle newlines and spaces properly
+                        for ch in content.chars() {
+                            if ch == '\n' {
+                                print!("\n│ ");
+                                std::io::stdout().flush().ok();
+                                last_was_space = false;
+                            } else if ch == ' ' {
+                                if !last_was_space {
+                                    print!("{}", ch);
+                                    std::io::stdout().flush().ok();
+                                    last_was_space = true;
+                                }
+                            } else {
+                                print!("{}", ch);
+                                std::io::stdout().flush().ok();
+                                last_was_space = false;
+                            }
+                        }
                         acc.push_str(content);
                     }
-                    (acc, first_chunk)
+                    (acc, first_chunk, last_was_space)
                 }
             },
         )
@@ -93,9 +116,12 @@ pub async fn infer_and_print(
         .0;
 
     loading.store(false, Ordering::Relaxed);
-    loading_task.abort();
+    let _ = loading_task.await;
 
-    println!(); // New line after the AI response
+    println!("\n└─");
+
+    // Debug printing
+    // println!("{}", assistent_result);
 
     // If all is okay we save the original message
     convo.save_message(
