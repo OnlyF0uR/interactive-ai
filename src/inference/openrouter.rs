@@ -9,7 +9,7 @@ use openrouter_rs::{Message, api::chat::ChatCompletionRequest, types::Role};
 use crate::{
     conversation::{Conversation, DBMessage},
     inference::{CONTEXT_K, DEV_PROMPT, SYSTEM_PROMPT},
-    instances::{client::get_or_client, rocksdb::get_rocks_db},
+    instances::{openrouter::get_or_client, rocksdb::get_rocks_db},
 };
 
 #[allow(dead_code)]
